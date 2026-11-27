@@ -118,10 +118,19 @@ def on_batch(state, batch):
         if price is not None:
             tape["prices"].append((slot, price))
 
-    # ── 2. Score each active curve and select high-conviction setups ─────────────
-    # Active curves = in state.curves, not complete, have a created_slot.
+    # ── 2. Score only curves touched by this batch (events + marks)
+    # Performance: don't rescan all curves every batch; only evaluate those that changed.
+    touched_mints = set()
+    for e in events:
+        touched_mints.add(e["mint"])
+    for m in marks:
+        touched_mints.add(m["mint"])
+    
     candidate_mints = []
-    for mint, curve in state.curves.items():
+    for mint in touched_mints:
+        curve = state.curves.get(mint)
+        if curve is None:
+            continue
         if curve.complete:
             continue
         if curve.created_slot is None:
