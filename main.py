@@ -103,6 +103,9 @@ def on_batch(state, batch):
             price = _price_from_reserves(e.get("real_token_reserves"), e.get("real_quote_reserves"))
             if price is not None:
                 tape["prices"].append((slot, price))
+                # Cap price history at 500 entries for performance
+                if len(tape["prices"]) > 500:
+                    tape["prices"] = tape["prices"][-500:]
 
         # CreateEvent is handled by the shim's BotState.apply_batch which updates state.curves;
         # we just ensure a tape entry exists.
@@ -117,6 +120,9 @@ def on_batch(state, batch):
         price = _price_from_reserves(m.get("real_token_reserves"), m.get("real_quote_reserves"))
         if price is not None:
             tape["prices"].append((slot, price))
+            # Cap price history at 500 entries for performance
+            if len(tape["prices"]) > 500:
+                tape["prices"] = tape["prices"][-500:]
 
     # ── 2. Score only curves touched by this batch (events + marks)
     # Performance: don't rescan all curves every batch; only evaluate those that changed.
@@ -160,9 +166,9 @@ def on_batch(state, batch):
         volatility_ok = False
 
         if len(prices) >= 3:
-            # Sort by slot to restore temporal order
-            prices_sorted = sorted(prices, key=lambda p: p[0])
-            price_vals = [p[1] for p in prices_sorted]
+            # Prices are appended in slot order during the batch, and batches come in slot order
+            # So the list is already in non-decreasing slot order - use it directly.
+            price_vals = [p[1] for p in prices]
 
             # Window high/low
             window_high = max(price_vals)
@@ -198,8 +204,9 @@ def on_batch(state, batch):
         elif len(prices) == 2:
             # Two price points: be lenient on volatility but still require
             # price near the higher of the two.
-            prices_sorted = sorted(prices, key=lambda p: p[0])
-            price_vals = [p[1] for p in prices_sorted]
+            # Prices are appended in slot order during the batch, and batches come in slot order
+            # So the list is already in non-decreasing slot order - use it directly.
+            price_vals = [p[1] for p in prices]
             window_high = max(price_vals)
             window_low = min(price_vals)
             last_price = price_vals[-1]
